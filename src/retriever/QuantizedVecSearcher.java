@@ -5,12 +5,20 @@
  */
 package retriever;
 
+import indexer.Cell;
 import indexer.DocVector;
+import indexer.OptimizedRealValuedVecIndexer;
+import indexer.SplitCells;
 import java.io.File;
 import java.io.FileReader;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
+import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
@@ -21,6 +29,7 @@ import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.search.similarities.LMJelinekMercerSimilarity;
 import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.util.Bits;
 
 /**
  *
@@ -34,6 +43,7 @@ public class QuantizedVecSearcher {
     int numDimensions;
     int numIntervals;
     boolean includeL1Neighbors;  // max L1 distance from the query cell
+    SplitCells splitCells;
     
     public QuantizedVecSearcher(String propFile) throws Exception {
         prop = new Properties();
@@ -42,7 +52,8 @@ public class QuantizedVecSearcher {
         
         numDimensions = Integer.parseInt(prop.getProperty("vec.numdimensions"));
         
-        File indexDir = new File(prop.getProperty("index"));
+        // Read from optimized index (instead of the initial index)
+        File indexDir = new File(prop.getProperty("optimized.index"));
         reader = DirectoryReader.open(FSDirectory.open(indexDir.toPath()));
         searcher = new IndexSearcher(reader);
         searcher.setSimilarity(new LMJelinekMercerSimilarity(0)); // almost close to tf
@@ -50,7 +61,8 @@ public class QuantizedVecSearcher {
         includeL1Neighbors = Boolean.parseBoolean(prop.getProperty("search.include_L1_neighbors", "false")); // max L1 distance
         
         DocVector.initVectorRange(prop);
-        numIntervals = DocVector.numIntervals;
+        numIntervals = DocVector.numIntervals;        
+        splitCells = SplitCells.readFromIndex(reader);
     }
     
     void close() throws Exception {
@@ -116,11 +128,20 @@ public class QuantizedVecSearcher {
     void searchWithRandomQueries() throws Exception {
         int numSamples = Integer.parseInt(prop.getProperty("syntheticdata.numqueries", "1"));
         for (int i=0; i < numSamples; i++)
-            searchWithRandomQuery();
+            searchWithRandomQuery(i);
     }
     
-    void searchWithRandomQuery() throws Exception {
-        DocVector randomQry = new DocVector(numDimensions, numIntervals);
+    void searchWithRandomQuery(int id) throws Exception {
+        
+        int numDocs = reader.numDocs();
+        int randIndex = (int)(Math.random()*numDocs);        
+        Document doc = reader.document(randIndex);
+        
+        DocVector randomQry = new DocVector(doc, numDimensions, numIntervals, splitCells);
+        System.out.println("Random Query: (docid = " + randIndex + ") " + randomQry);
+        randomQry.addNoise(0.000001f); // add small noise to components
+        System.out.println("Random Query after adding noise: " + randomQry);
+        
         System.out.println("Query: " + randomQry);
         TopDocs topDocs = retrieve(randomQry);
         System.out.println("Total matches: " + topDocs.totalHits);        
@@ -129,7 +150,7 @@ public class QuantizedVecSearcher {
     public static void main(String[] args) {
         if (args.length == 0) {
             args = new String[1];
-            System.out.println("Usage: java TweetIndexer <prop-file>");
+            System.out.println("Usage: java QuantizedVecSearcher <prop-file>");
             args[0] = "init.properties";
         }
         
@@ -144,14 +165,3 @@ public class QuantizedVecSearcher {
         
     }
 }
-
-/*
-        ByteBuffer buff2 = ByteBuffer.wrap(bytes);
-        float[] x2 = new float[x.length];
-        for (int i=0; i < x2.length; i++) {
-            x2[i] = buff2.getFloat();
-            assert(x2[i] == x[i]);
-        }
-        
-
-*/

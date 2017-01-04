@@ -23,7 +23,7 @@ import org.apache.lucene.util.BytesRef;
 public class Cell {
     int axisId;
     List<Integer> offsets;
-    
+
     public Cell(int axisId) {
         this.axisId = axisId;
         offsets = new ArrayList<>();
@@ -77,6 +77,28 @@ public class Cell {
         newCell.offsets.add(newOffset);
         return newCell;
     }
+
+    static public Cell constructQuantizedQueryCell(DocVector vec, int axisId, SplitCells splitCells) {
+        
+        Cell newCell = new Cell(axisId);
+        
+        float delta = (DocVector.MAX_VAL - DocVector.MIN_VAL)/(float)DocVector.numIntervals;
+        float cellMin = DocVector.MIN_VAL;
+        int offset;
+        Cell splitInfo;
+        
+        // Additional offsets (in addition to the first one)
+        do {
+            offset = (int)((vec.x[axisId] - cellMin)/delta);  
+            newCell.offsets.add(offset);
+            cellMin += delta * offset;
+            delta = delta/(float)DocVector.numIntervals;
+            splitInfo = splitCells.getSplitInfo(newCell);
+        }
+        while (splitInfo != null);
+            
+        return newCell;
+    }
     
     Cell getCellIdOfParentCell() {
         Cell parentCell = new Cell(axisId);
@@ -100,7 +122,7 @@ public class Cell {
             int docid;
             while ((docid = docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
                 Document d = reader.document(docid);
-                DocVector dvec = new DocVector(d, numDimensions, DocVector.numIntervals);
+                DocVector dvec = new DocVector(d, numDimensions, DocVector.numIntervals, null);
                 containedPoints.add(dvec);
             }
         }

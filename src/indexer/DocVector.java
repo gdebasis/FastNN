@@ -58,7 +58,8 @@ public class DocVector {
     }
     
     // Generate random
-    public DocVector(int numDimensions, int numIntervals) {
+    public DocVector(int id, int numDimensions, int numIntervals, SplitCells splitCells) {
+        this.id = String.valueOf(id);
         this.numIntervals = numIntervals;
         this.numDimensions = numDimensions;
         StringBuffer buff = new StringBuffer();
@@ -66,8 +67,11 @@ public class DocVector {
         for (int i=0; i < numDimensions; i++) {
             x[i] = MIN_VAL + (float)Math.random()*(MAX_VAL - MIN_VAL);
             buff.append(x[i]).append(" ");
-        }        
-        quantized = quantize();
+        }
+        if (splitCells == null)
+            quantized = quantize();
+        else
+            quantized = quantizeWithSplitCells(splitCells);            
     }
     
     public DocVector(float[] x, int numIntervals) {
@@ -82,7 +86,7 @@ public class DocVector {
         quantized = quantize();
     }
     
-    public DocVector(Document doc, int numDimensions, int numIntervals) {
+    public DocVector(Document doc, int numDimensions, int numIntervals, SplitCells splitCells) {
         
         // Read the floating point number array from the index
         BytesRef bytesRef = doc.getBinaryValue(DocVector.FIELD_VEC);
@@ -100,7 +104,14 @@ public class DocVector {
             keys[i] = new Cell(cellIds[i]);
         }
         
-        this.numIntervals = numIntervals;
+        this.numDimensions = numDimensions;
+        DocVector.numIntervals = numIntervals;
+        this.id = doc.get(DocVector.FIELD_ID);
+                
+        if (splitCells == null)
+            quantized = quantize();
+        else
+            quantized = quantizeWithSplitCells(splitCells);            
     }
     
     byte[] getVecBytes(float[] x) {
@@ -169,7 +180,7 @@ public class DocVector {
         // which takes more space...
         doc.add(new StoredField(FIELD_VEC, this.getVecBytes(x)));
         
-        doc.add(new Field(FIELD_CELL_ID, quantized, Field.Store.YES, Field.Index.ANALYZED));
+        doc.add(new Field(FIELD_CELL_ID, quantized, Field.Store.YES, Field.Index.ANALYZED, Field.TermVector.YES));
         
         return doc;
     }
@@ -194,11 +205,29 @@ public class DocVector {
     static DocVector[] synthesizeRandomly(int numSamples, int numDimensions, int numIntervals) {
         DocVector[] vecs = new DocVector[numSamples];
         for (int i = 0; i < numSamples; i++) {
-            vecs[i] = new DocVector(numDimensions, numIntervals);
+            vecs[i] = new DocVector(i, numDimensions, numIntervals, null);
         }
         return vecs;
     }
     
+    void setQuantized(String quantized) {
+        this.quantized = quantized;
+    }
+    
+    String quantizeWithSplitCells(SplitCells splitCells) {
+        StringBuffer buff = new StringBuffer();        
+        for (int i=0; i < this.numDimensions; i++) {
+            buff.append(Cell.constructQuantizedQueryCell(this, i, splitCells).toString()).append(" ");
+        }
+        return buff.toString();
+    }
+    
+    public void addNoise(float epsilon) {
+        for (int i=0; i < numDimensions; i++) {
+            this.x[i] += (-epsilon + Math.random()*epsilon);
+        }
+    }
+        
     public static void main(String[] args) {
         DocVector[] dvecs = synthesizeRandomly(5, 2, 20000);
         for (DocVector dvec : dvecs) {

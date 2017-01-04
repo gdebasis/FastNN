@@ -80,7 +80,7 @@ public class RealValuedVecIndexer {
         int numRandomSamples = Integer.parseInt(prop.getProperty("syntheticdata.numsamples", "100000"));
         
         for (int i = 0; i < numRandomSamples; i++) {
-            DocVector dvec = new DocVector(numDimensions, numIntervals);
+            DocVector dvec = new DocVector(i, numDimensions, numIntervals, null);
             System.out.println(dvec.toString());
             Document luceneDoc = dvec.constructDoc();
             writer.addDocument(luceneDoc);
