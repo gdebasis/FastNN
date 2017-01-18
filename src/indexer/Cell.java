@@ -12,7 +12,10 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.util.BytesRef;
 
@@ -47,6 +50,17 @@ public class Cell {
         for (int i=1; i < tokens.length; i++) {
             offsets.add(Integer.parseInt(tokens[i]));
         }
+    }
+    
+    public Cell getL1Neighbor(int pos) {
+        Cell adjCell = new Cell(this);
+        int numOffsets = adjCell.offsets.size();
+        int lastOffset = adjCell.offsets.get(numOffsets-1);
+        lastOffset += pos;
+        if (lastOffset < 0)
+            return null;
+        adjCell.offsets.set(numOffsets-1, lastOffset);
+        return adjCell;
     }
 
     @Override
@@ -132,6 +146,25 @@ public class Cell {
     
     boolean validCell() {
         return offsets.size() > 0;
+    }
+    
+    public BooleanQuery constructQuery(int span) {
+        BooleanQuery cellLocQuery = new BooleanQuery();
+        String cellName = this.toString();
+        
+        TermQuery tq = new TermQuery(new Term(DocVector.FIELD_CELL_ID, cellName));
+        cellLocQuery.add(tq, BooleanClause.Occur.SHOULD);
+        
+        for (int pos = 1; pos <= span; pos++) {
+            Cell prevCell = this.getL1Neighbor(-pos);
+            if (prevCell != null)
+                cellLocQuery.add(new TermQuery(new Term(DocVector.FIELD_CELL_ID, prevCell.toString())), BooleanClause.Occur.SHOULD);
+            Cell nextCell = this.getL1Neighbor(pos);
+            if (nextCell != null)            
+                cellLocQuery.add(new TermQuery(new Term(DocVector.FIELD_CELL_ID, nextCell.toString())), BooleanClause.Occur.SHOULD);
+        }
+        
+        return cellLocQuery;
     }
     
     boolean toSplit(IndexReader reader) throws Exception {

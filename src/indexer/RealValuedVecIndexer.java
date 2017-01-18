@@ -66,7 +66,7 @@ public class RealValuedVecIndexer {
         }
         
         File docFile = new File(prop.getProperty("dvec.file"));
-        String dataSource = prop.getProperty("data.source", "synthetic");
+        String dataSource = prop.getProperty("data.source");
         if (dataSource.equals("external"))
             indexFile(docFile);       
         else

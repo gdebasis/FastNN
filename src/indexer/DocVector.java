@@ -5,11 +5,13 @@
  */
 package indexer;
 
+import com.google.common.primitives.Doubles;
+import com.google.common.primitives.Floats;
 import java.nio.ByteBuffer;
 import java.util.Properties;
+import org.apache.commons.math3.ml.distance.EuclideanDistance;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.FloatField;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.util.BytesRef;
 
@@ -18,7 +20,7 @@ import org.apache.lucene.util.BytesRef;
  * @author Debasis
  */
 
-public class DocVector {
+public class DocVector implements Comparable<DocVector> {
     String id;
     float[] x;
     Cell[] keys;
@@ -26,6 +28,7 @@ public class DocVector {
     public int numDimensions;
     public static int numIntervals;
     String quantized;
+    float distFromQry;
     
     static float MIN_VAL = 0;
     static float MAX_VAL = 1f;
@@ -34,10 +37,24 @@ public class DocVector {
     public static final String FIELD_CELL_ID = "cell";
     public static final String FIELD_VEC = "vec";
     
+    public float getDistFromQuery() { return distFromQry; }
+    
     static public void initVectorRange(Properties prop) {
         numIntervals = Integer.parseInt(prop.getProperty("vec.numintervals"));        
         MIN_VAL = Float.parseFloat(prop.getProperty("vec.min", "-1"));
         MAX_VAL = Float.parseFloat(prop.getProperty("vec.max", "1"));
+    }
+
+    public DocVector(DocVector that, int startDimension, int numDimensions) {
+        this.id = that.id;
+        this.numDimensions = numDimensions;
+        this.keys = new Cell[numDimensions];
+        this.x = new float[numDimensions];
+        
+        System.arraycopy(that.keys, startDimension, this.keys, 0, numDimensions);
+        System.arraycopy(that.x, startDimension, this.x, 0, numDimensions);
+        
+        quantized = quantize();
     }
     
     public DocVector(String line, int numDimensions, int numIntervals) {
@@ -53,14 +70,14 @@ public class DocVector {
             x[i-1] = Float.parseFloat(tokens[i]);
             buff.append(tokens[i]).append(" ");
         }
-        this.numIntervals = numIntervals;
+        DocVector.numIntervals = numIntervals;
         quantized = quantize();
     }
     
     // Generate random
     public DocVector(int id, int numDimensions, int numIntervals, SplitCells splitCells) {
         this.id = String.valueOf(id);
-        this.numIntervals = numIntervals;
+        DocVector.numIntervals = numIntervals;
         this.numDimensions = numDimensions;
         StringBuffer buff = new StringBuffer();
         x = new float[numDimensions];
@@ -74,16 +91,43 @@ public class DocVector {
             quantized = quantizeWithSplitCells(splitCells);            
     }
     
-    public DocVector(float[] x, int numIntervals) {
+    public Cell[] getCells() {
+        return keys;
+    }
+    
+    public int getId() { return Integer.parseInt(id); }
+    
+    public DocVector(String id, float[] x, int numIntervals, boolean normalize) {
+        this.id = id;
         this.numDimensions = x.length;
-        this.numIntervals = numIntervals;
+        DocVector.numIntervals = numIntervals;
+        
         this.x = new float[numDimensions];
+        for (int i=0; i < numDimensions; i++) {
+            this.x[i] = x[i];
+        }
+        normalize();
+        
         StringBuffer buff = new StringBuffer();
         for (int i=0; i < numDimensions; i++) {
-            this.x[i] = x[i];            
-            buff.append(x[i]).append(" ");
+            buff.append(this.x[i]).append(" ");
         }
         quantized = quantize();
+    }
+    
+    final void normalize() {  // in [0, 1]
+        float max = Float.MIN_VALUE, min = Float.MAX_VALUE;
+        for (int i=0; i < x.length; i++) {
+            if (x[i] > max)
+                max = x[i];            
+            else if (x[i] < min)
+                min = x[i];
+        }
+        
+        float z = max - min;
+        for (int i=0; i < x.length; i++) {
+            x[i] = (x[i] - min)/z;
+        }    
     }
     
     public DocVector(Document doc, int numDimensions, int numIntervals, SplitCells splitCells) {
@@ -113,6 +157,29 @@ public class DocVector {
         else
             quantized = quantizeWithSplitCells(splitCells);            
     }
+
+    public DocVector(Document doc, int numDimensions, int numIntervals) {
+        
+        // Read the floating point number array from the index
+        BytesRef bytesRef = doc.getBinaryValue(DocVector.FIELD_VEC);
+        
+        ByteBuffer buff = ByteBuffer.wrap(bytesRef.bytes);
+        this.x = new float[numDimensions];
+        for (int i=0; i < x.length; i++) {
+            this.x[i] = buff.getFloat();
+        }
+        
+        // Read the cell descriptors from the index
+        String[] cellIds = doc.get(FIELD_CELL_ID).split("\\s+");
+        keys = new Cell[numDimensions];
+        for (int i=0; i < keys.length; i++) {
+            keys[i] = new Cell(cellIds[i]);
+        }
+        
+        this.numDimensions = numDimensions;
+        DocVector.numIntervals = numIntervals;
+        this.id = doc.get(DocVector.FIELD_ID);                
+    }
     
     byte[] getVecBytes(float[] x) {
         ByteBuffer buff = ByteBuffer.allocate(Float.SIZE * x.length);
@@ -126,6 +193,9 @@ public class DocVector {
     public String getQuantizedString() {
         return quantized;
     }
+    
+    // for ranking purpose
+    public void setDistWithQry(float sim) { this.distFromQry = sim; }
     
     public int getNumberofDimensions() { return this.numDimensions; }
     public int getNumberofIntervals() { return (int)this.numIntervals; }
@@ -171,7 +241,7 @@ public class DocVector {
         return buff.toString();        
     }
     
-    Document constructDoc() {
+    public Document constructDoc() {
         Document doc = new Document();
         
         doc.add(new Field(FIELD_ID, id==null?"":id, Field.Store.YES, Field.Index.NOT_ANALYZED));
@@ -227,7 +297,47 @@ public class DocVector {
             this.x[i] += (-epsilon + Math.random()*epsilon);
         }
     }
+
+    double[] toDoubleArray(float[] arr) {
+        if (arr == null) return null;
+        int n = arr.length;
+        double[] ret = new double[n];
+        for (int i = 0; i < n; i++) {
+          ret[i] = arr[i];
+        }
+        return ret;
+    }
+    
+    public float getDist(DocVector that) {
+        /*
+        EuclideanDistance dist = new EuclideanDistance();        
+        return (float)dist.compute(toDoubleArray(x), toDoubleArray(that.x));
+        */
         
+        float dist = 0, del = 0;
+        for (int i=0; i < numDimensions; i++) {
+            del = x[i] - that.x[i];
+            dist += del*del;
+        }
+        return dist;
+    }
+
+    @Override
+    public int compareTo(DocVector that) {
+        return Float.compare(this.distFromQry, that.distFromQry);
+    }
+    
+    @Override
+    public boolean equals(Object o) {
+        DocVector that = (DocVector)o;
+        return this.id.equals(that.id);
+    }
+
+    public DocVector getSubVector(int startDimension, int numDimensions) {
+        DocVector subvec = new DocVector(this, startDimension, numDimensions);
+        return subvec;
+    }
+    
     public static void main(String[] args) {
         DocVector[] dvecs = synthesizeRandomly(5, 2, 20000);
         for (DocVector dvec : dvecs) {

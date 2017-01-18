@@ -44,6 +44,9 @@ public class SplitCells {
         Document splitCellInfoDoc = reader.document(numDocs-1);
         
         String splitCellsInfo = splitCellInfoDoc.get(OptimizedRealValuedVecIndexer.SPLIT_CELLS_FIELD);
+        if (splitCellsInfo == null)
+            return null;
+        
         String[] tokens = splitCellsInfo.split("\\s+");
         for (String token : tokens) {
             Cell cell = new Cell(token);
