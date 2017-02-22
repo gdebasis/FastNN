@@ -89,7 +89,9 @@ public class LineDocumentIndexer extends RealValuedVecIndexer {
     }
     
     @Override
-    void indexFile(File file) throws Exception {
+    void indexFile() throws Exception {
+        File file = new File(prop.getProperty("dvec.file"));
+        
         FileReader fr = new FileReader(file);
         BufferedReader br = new BufferedReader(fr);
         String line;

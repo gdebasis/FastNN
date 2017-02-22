@@ -5,8 +5,6 @@
  */
 package indexer;
 
-import com.google.common.primitives.Doubles;
-import com.google.common.primitives.Floats;
 import java.nio.ByteBuffer;
 import java.util.Properties;
 import org.apache.commons.math3.ml.distance.EuclideanDistance;
@@ -34,8 +32,10 @@ public class DocVector implements Comparable<DocVector> {
     static float MAX_VAL = 1f;
     
     public static final String FIELD_ID = "docid";
+    public static final String FIELD_SUBVEC_ID = "svecid";
     public static final String FIELD_CELL_ID = "cell";
     public static final String FIELD_VEC = "vec";
+    public static final String FIELD_PARENT_VEC = "pvec";  // the whole vec in case of storing projections
     
     public float getDistFromQuery() { return distFromQry; }
     
@@ -50,8 +50,7 @@ public class DocVector implements Comparable<DocVector> {
         this.numDimensions = numDimensions;
         this.keys = new Cell[numDimensions];
         this.x = new float[numDimensions];
-        
-        System.arraycopy(that.keys, startDimension, this.keys, 0, numDimensions);
+    
         System.arraycopy(that.x, startDimension, this.x, 0, numDimensions);
         
         quantized = quantize();
@@ -169,16 +168,36 @@ public class DocVector implements Comparable<DocVector> {
             this.x[i] = buff.getFloat();
         }
         
+        /*
         // Read the cell descriptors from the index
         String[] cellIds = doc.get(FIELD_CELL_ID).split("\\s+");
         keys = new Cell[numDimensions];
         for (int i=0; i < keys.length; i++) {
             keys[i] = new Cell(cellIds[i]);
         }
+        */
         
         this.numDimensions = numDimensions;
         DocVector.numIntervals = numIntervals;
         this.id = doc.get(DocVector.FIELD_ID);                
+        
+        quantized = quantize();
+    }
+
+    public DocVector(Document doc, int numDimensions, int numIntervals, boolean unused) {
+        
+        // Read the floating point number array from the index
+        BytesRef bytesRef = doc.getBinaryValue(DocVector.FIELD_VEC);
+        
+        ByteBuffer buff = ByteBuffer.wrap(bytesRef.bytes);
+        this.x = new float[numDimensions];
+        for (int i=0; i < x.length; i++) {
+            this.x[i] = buff.getFloat();
+        }
+        
+        this.numDimensions = numDimensions;
+        DocVector.numIntervals = numIntervals;
+        this.id = doc.get(DocVector.FIELD_ID);                        
     }
     
     byte[] getVecBytes(float[] x) {
@@ -195,7 +214,10 @@ public class DocVector implements Comparable<DocVector> {
     }
     
     // for ranking purpose
-    public void setDistWithQry(float sim) { this.distFromQry = sim; }
+    public void setDistWithQry(float dist) { this.distFromQry = dist; }
+    
+    // To accumulate subspace distances
+    public void accumulateDist(float dist) { this.distFromQry += dist; }
     
     public int getNumberofDimensions() { return this.numDimensions; }
     public int getNumberofIntervals() { return (int)this.numIntervals; }
@@ -209,7 +231,7 @@ public class DocVector implements Comparable<DocVector> {
         return buff.toString();
     }
     
-    String quantize() {
+    public String quantize() {
         keys = new Cell[numDimensions];
         
         StringBuffer buff = new StringBuffer();
@@ -250,7 +272,25 @@ public class DocVector implements Comparable<DocVector> {
         // which takes more space...
         doc.add(new StoredField(FIELD_VEC, this.getVecBytes(x)));
         
-        doc.add(new Field(FIELD_CELL_ID, quantized, Field.Store.YES, Field.Index.ANALYZED, Field.TermVector.YES));
+        //doc.add(new Field(FIELD_CELL_ID, quantized, Field.Store.YES, Field.Index.ANALYZED, Field.TermVector.YES));
+        doc.add(new Field(FIELD_CELL_ID, quantized, Field.Store.NO, Field.Index.ANALYZED, Field.TermVector.NO));
+        
+        return doc;
+    }
+
+    public Document constructDoc(DocVector wholeDocvec) {
+        Document doc = new Document();
+        
+        doc.add(new Field(FIELD_SUBVEC_ID, id==null?"":id, Field.Store.YES, Field.Index.NOT_ANALYZED));
+        doc.add(new Field(FIELD_ID, wholeDocvec.id==null?"":wholeDocvec.id, Field.Store.YES, Field.Index.NOT_ANALYZED));
+        
+        // Store the vectors as byte arrays (in binary format rather than text format
+        // which takes more space...
+        doc.add(new StoredField(FIELD_PARENT_VEC, wholeDocvec.getVecBytes(x)));
+        doc.add(new StoredField(FIELD_VEC, this.getVecBytes(x)));
+        
+        //doc.add(new Field(FIELD_CELL_ID, quantized, Field.Store.YES, Field.Index.ANALYZED, Field.TermVector.YES));
+        doc.add(new Field(FIELD_CELL_ID, quantized, Field.Store.NO, Field.Index.ANALYZED, Field.TermVector.NO));
         
         return doc;
     }
@@ -318,8 +358,8 @@ public class DocVector implements Comparable<DocVector> {
         for (int i=0; i < numDimensions; i++) {
             del = x[i] - that.x[i];
             dist += del*del;
-        }
-        return dist;
+        }                
+        return dist;        
     }
 
     @Override

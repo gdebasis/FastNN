@@ -6,13 +6,24 @@
 package sift;
 
 import indexer.DocVector;
+import indexer.QuerySiftVecIndexer;
+import indexer.QueryVector;
+import indexer.SiftVecIndexer;
+import java.io.File;
 import java.io.FileReader;
 import java.io.RandomAccessFile;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.store.FSDirectory;
 
 /**
  *
@@ -25,6 +36,7 @@ public class VecQueries {
     Qrels nnData;
     
     public float[] rAt; // aggregated recall at 1, 10, 100
+    public float avgJacard;
     
     public VecQueries(String propFile) throws Exception {
         prop = new Properties();
@@ -41,7 +53,7 @@ public class VecQueries {
     
     public Qrels getQrels() { return nnData; }
     
-    final void loadQueries() throws Exception {
+    void loadQueries() throws Exception {
         String fileName = prop.getProperty("queryvecs.file");
         boolean normalize = Boolean.parseBoolean(prop.getProperty("normalize", "false"));
         
@@ -83,6 +95,42 @@ public class VecQueries {
         return buff.toString();
     }
     
+    void printSortedDocIds(List<DocVector> dvecList, String header) {
+        StringBuffer buff = new StringBuffer();
+        buff.append(header).append(": ");
+        
+        int i = 0;
+        int[] sortedRelDocIds = new int[dvecList.size()];
+        for (DocVector d : dvecList) {
+            sortedRelDocIds[i++] = d.getId();
+        }
+        Arrays.sort(sortedRelDocIds);
+        for (int relDocId : sortedRelDocIds) {
+            buff.append(relDocId).append(",");            
+        }
+        System.out.println(buff.toString());
+    }
+    
+    float computeJacard(List<DocVector> rel, List<DocVector> retr) {
+        HashSet<Integer> docIds = new HashSet<>();
+        
+        //printSortedDocIds(rel, "Rel");
+        //printSortedDocIds(retr, "Retr");
+        
+        for (DocVector a : rel) {
+            docIds.add(a.getId());
+        }
+        
+        int overlap = 0;        
+        for (DocVector b : retr) {
+            if (docIds.contains(b.getId()))
+                overlap++;
+        }
+        
+        //return overlap/(float)(rel.size() + retr.size() - overlap);
+        return overlap/(float)rel.size();
+    }
+    
     public void evaluate(IndexReader reader, int id, List<DocVector> topDocs) throws Exception {
         int nnVecId;
         int i;
@@ -117,13 +165,11 @@ public class VecQueries {
             buff.append(d.getId()).append(",");
             i++;
         }
-        
+                
         //System.out.println("1-NN: " + nnVecId);
         //System.out.println("Retrieved docs: " + buff.toString());
         
-        if (nnRetrievedAt < 0)
-            return;
-        
+        /*
         if (nnRetrievedAt < 100) {
             rAt[2]++;
             rAt[1]++;
@@ -136,6 +182,14 @@ public class VecQueries {
         else if (nnRetrievedAt < 1) {
             rAt[0]++;                        
         }
-    }            
+        */
+        int rAt1ForThisQry = nnRetrievedAt==0? 1 : 0;        
+        rAt[0] += rAt1ForThisQry; 
+
+        float jacard = computeJacard(relVecs, topDocs);
+        avgJacard += jacard;
+        
+        System.out.println("Jacard = " + jacard + " R@1 = " + rAt1ForThisQry);
+    }    
 }
 

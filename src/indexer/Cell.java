@@ -13,8 +13,10 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.util.BytesRef;
@@ -148,11 +150,15 @@ public class Cell {
         return offsets.size() > 0;
     }
     
-    public BooleanQuery constructQuery(int span) {
+    public Query constructQuery(int span) {
         BooleanQuery cellLocQuery = new BooleanQuery();
         String cellName = this.toString();
         
         TermQuery tq = new TermQuery(new Term(DocVector.FIELD_CELL_ID, cellName));
+        if (span == 0) {
+            return tq;
+        }
+        
         cellLocQuery.add(tq, BooleanClause.Occur.SHOULD);
         
         for (int pos = 1; pos <= span; pos++) {
@@ -165,6 +171,41 @@ public class Cell {
         }
         
         return cellLocQuery;
+    }
+    
+    public Query constructWeightedQuery(int span, float sigma) {
+        BooleanQuery cellLocQuery = new BooleanQuery();
+        String cellName = this.toString();
+        Cell adjCell;
+        
+        TermQuery tq = new TermQuery(new Term(DocVector.FIELD_CELL_ID, cellName));
+        if (span == 0) {
+            return tq;
+        }
+                
+        cellLocQuery.add(tq, BooleanClause.Occur.SHOULD);
+        
+        for (int pos = 1; pos <= span; pos++) {
+            adjCell = this.getL1Neighbor(-pos);
+            if (adjCell != null)
+                cellLocQuery.add(getWeightedTerm(adjCell, sigma), BooleanClause.Occur.SHOULD);
+            adjCell = this.getL1Neighbor(pos);
+            if (adjCell != null)            
+                cellLocQuery.add(getWeightedTerm(adjCell, sigma), BooleanClause.Occur.SHOULD);
+        }
+        
+        return cellLocQuery;
+    }
+    
+    TermQuery getWeightedTerm(Cell adjCell, float sigma) {
+        int u = this.offsets.get(offsets.size()-1);
+        int v = adjCell.offsets.get(offsets.size()-1);
+        int dist = u-v;
+        float alpha = (dist*dist)/(sigma);
+        float wt = (float)Math.exp(-alpha);
+        TermQuery tq = new TermQuery(new Term(DocVector.FIELD_CELL_ID, adjCell.toString()));
+        tq.setBoost(wt);
+        return tq;
     }
     
     boolean toSplit(IndexReader reader) throws Exception {

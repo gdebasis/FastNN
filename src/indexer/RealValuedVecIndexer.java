@@ -34,6 +34,17 @@ public class RealValuedVecIndexer {
     IndexWriter writer;
     String indexPath;
     
+    public RealValuedVecIndexer(String propFile) throws Exception {
+        prop = new Properties();
+        prop.load(new FileReader(propFile));
+        indexPath = prop.getProperty("index");        
+        
+        numDimensions = Integer.parseInt(prop.getProperty("vec.numdimensions"));
+        
+        DocVector.initVectorRange(prop);
+        numIntervals = DocVector.numIntervals;
+    }
+    
     public RealValuedVecIndexer(String propFile, String indexDirName) throws Exception {
         prop = new Properties();
         prop.load(new FileReader(propFile));        
@@ -51,24 +62,19 @@ public class RealValuedVecIndexer {
         writer = new IndexWriter(FSDirectory.open(new File(indexPath).toPath()), iwcfg);        
     }
     
-    void processAll() throws Exception {
+    public void processAll() throws Exception {
         System.out.println("Indexing Real-valued vectors...");
         
         indexAll();        
-        
-        writer.close();
+
+        if (writer != null)
+            writer.close();
     }
     
-    void indexAll() throws Exception {
-        if (writer == null) {
-            System.err.println("Skipping indexing... Index already exists at " + indexPath + "!!");
-            return;
-        }
-        
-        File docFile = new File(prop.getProperty("dvec.file"));
+    void indexAll() throws Exception {        
         String dataSource = prop.getProperty("data.source");
         if (dataSource.equals("external"))
-            indexFile(docFile);       
+            indexFile();       
         else
             indexRandom();
     }
@@ -93,7 +99,9 @@ public class RealValuedVecIndexer {
         }
     }
     
-    void indexFile(File file) throws Exception {
+    void indexFile() throws Exception {
+        File file = new File(prop.getProperty("dvec.file"));
+        
         FileReader fr = new FileReader(file);
         BufferedReader br = new BufferedReader(fr);
         String line;

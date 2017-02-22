@@ -15,16 +15,22 @@ import sift.FloatByteRcd;
  */
 public class SiftVecIndexer extends RealValuedVecIndexer {
 
+    public SiftVecIndexer(String propFile) throws Exception {
+        super(propFile);
+    }
+    
     public SiftVecIndexer(String propFile, String indexDirName) throws Exception {
         super(propFile, indexDirName);
     }
 
     @Override
-    void indexFile(File file) throws Exception {
+    void indexFile() throws Exception {
+        File file = new File(prop.getProperty("dvec.file"));
+        
         RandomAccessFile reader = new RandomAccessFile(file, "r");
         boolean normalize = Boolean.parseBoolean(prop.getProperty("normalize", "false"));
         
-        final int batchSize = 100;
+        final int batchSize = 10000;
         int count = 0;
 
         FloatByteRcd fbr = null;
@@ -38,6 +44,7 @@ public class SiftVecIndexer extends RealValuedVecIndexer {
                 
             if (count%batchSize == 0) {
                 System.out.println("Added " + count + " vectors...");
+                // break;  // Early exit for debugging
             }
 
             writer.addDocument(luceneDoc);

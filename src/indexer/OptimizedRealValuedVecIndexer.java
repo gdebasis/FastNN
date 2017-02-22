@@ -157,7 +157,7 @@ public class OptimizedRealValuedVecIndexer extends RealValuedVecIndexer {
     }
     
     @Override
-    void processAll() throws Exception {
+    public void processAll() throws Exception {
         processAllDocumentWise();
         //processAllTermWise();
     }

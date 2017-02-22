@@ -74,5 +74,47 @@ public class FloatByteRcd {
     public DocVector getDocVec(boolean normalize) {
         DocVector dvec = new DocVector(String.valueOf(id), x, DocVector.numIntervals, normalize);        
         return dvec;
-    }    
+    }
+    
+    // To get a sub-vector
+    public DocVector getDocVec(boolean normalize, int id, int startDimension, int numDimensions) {
+        float[] x = new float[numDimensions];
+        System.arraycopy(this.x, startDimension, x, 0, numDimensions);
+        DocVector dvec = new DocVector(String.valueOf(id), x, DocVector.numIntervals, normalize);        
+        return dvec;
+    }
+
+    public String toString() {
+        StringBuffer buff = new StringBuffer();
+        for (float x_i : this.x) {
+            buff.append(x_i).append("   ");
+        }
+        return buff.toString();
+    }
+
+    public static void main(String[] args) {
+
+        FloatByteRcd fbr = null;
+        RandomAccessFile fp;
+		if (args.length < 1) {
+			System.err.println("Usage: java FloatByteRcd <file>");
+			return;
+		}
+
+        try {
+            fp = new RandomAccessFile(args[0], "r");
+
+            do {
+                fbr = FloatByteRcd.readNext(fp, 0);
+                if (fbr == null)
+                    break;
+                System.out.println(fbr);
+            }
+            while (true);        
+        }
+        catch (Exception ex) {
+			ex.printStackTrace();
+        }
+        
+    }
 }
