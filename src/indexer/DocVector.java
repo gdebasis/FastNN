@@ -7,6 +7,7 @@ package indexer;
 
 import java.nio.ByteBuffer;
 import java.util.Properties;
+import org.apache.commons.math3.distribution.MixtureMultivariateNormalDistribution;
 import org.apache.commons.math3.ml.distance.EuclideanDistance;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -19,7 +20,8 @@ import org.apache.lucene.util.BytesRef;
  */
 
 public class DocVector implements Comparable<DocVector> {
-    String id;
+    int id;
+    String docName;
     float[] x;
     Cell[] keys;
     
@@ -28,8 +30,8 @@ public class DocVector implements Comparable<DocVector> {
     String quantized;
     float distFromQry;
     
-    static float MIN_VAL = 0;
-    static float MAX_VAL = 1f;
+    static public float MINVAL = 0;
+    static public float MAXVAL = 1f;
     
     public static final String FIELD_ID = "docid";
     public static final String FIELD_SUBVEC_ID = "svecid";
@@ -41,12 +43,14 @@ public class DocVector implements Comparable<DocVector> {
     
     static public void initVectorRange(Properties prop) {
         numIntervals = Integer.parseInt(prop.getProperty("vec.numintervals"));        
-        MIN_VAL = Float.parseFloat(prop.getProperty("vec.min", "-1"));
-        MAX_VAL = Float.parseFloat(prop.getProperty("vec.max", "1"));
+        MINVAL = Float.parseFloat(prop.getProperty("vec.min", "-1"));
+        MAXVAL = Float.parseFloat(prop.getProperty("vec.max", "1"));
     }
 
+    public float[] getVec() { return x; }
+    
     public DocVector(DocVector that, int startDimension, int numDimensions) {
-        this.id = that.id;
+        this.docName = that.docName;
         this.numDimensions = numDimensions;
         this.keys = new Cell[numDimensions];
         this.x = new float[numDimensions];
@@ -58,7 +62,25 @@ public class DocVector implements Comparable<DocVector> {
     
     public DocVector(String line, int numDimensions, int numIntervals) {
         String[] tokens = line.split("\\s+");
-        this.id = tokens[0];        
+        this.docName = tokens[0];        
+        this.numDimensions = numDimensions;
+        
+        assert(tokens.length-1 == numDimensions);
+        x = new float[numDimensions];
+        
+        StringBuffer buff = new StringBuffer();
+        for (int i=1; i < tokens.length; i++) {
+            x[i-1] = Float.parseFloat(tokens[i]);
+            buff.append(tokens[i]).append(" ");
+        }
+        DocVector.numIntervals = numIntervals;
+        quantized = quantize();
+    }
+
+    public DocVector(String line, int id, int numDimensions, int numIntervals) {
+        String[] tokens = line.split("\\s+");
+        this.docName = tokens[0];
+        this.id = id;
         this.numDimensions = numDimensions;
         
         assert(tokens.length-1 == numDimensions);
@@ -75,13 +97,13 @@ public class DocVector implements Comparable<DocVector> {
     
     // Generate random
     public DocVector(int id, int numDimensions, int numIntervals, SplitCells splitCells) {
-        this.id = String.valueOf(id);
+        this.docName = String.valueOf(id);
         DocVector.numIntervals = numIntervals;
         this.numDimensions = numDimensions;
         StringBuffer buff = new StringBuffer();
         x = new float[numDimensions];
         for (int i=0; i < numDimensions; i++) {
-            x[i] = MIN_VAL + (float)Math.random()*(MAX_VAL - MIN_VAL);
+            x[i] = MINVAL + (float)Math.random()*(MAXVAL - MINVAL);
             buff.append(x[i]).append(" ");
         }
         if (splitCells == null)
@@ -89,15 +111,32 @@ public class DocVector implements Comparable<DocVector> {
         else
             quantized = quantizeWithSplitCells(splitCells);            
     }
-    
+
+    public DocVector(MixtureMultivariateNormalDistribution mixtureDist, int id) {
+        this.docName = String.valueOf(id);
+        this.numDimensions = mixtureDist.getDimension();
+        StringBuffer buff = new StringBuffer();
+        x = new float[numDimensions];
+        
+        double[] sampled = mixtureDist.sample();
+        
+        for (int i=0; i < numDimensions; i++) {
+            assert(x[i] >= DocVector.MINVAL && x[i] <= DocVector.MAXVAL);
+            x[i] = (float)sampled[i];
+            buff.append(x[i]).append(" ");
+        }
+        quantized = quantize();
+    }
+        
     public Cell[] getCells() {
         return keys;
     }
     
-    public int getId() { return Integer.parseInt(id); }
+    public int getId() { return id; }
+    public String getDocName() { return docName; }
     
-    public DocVector(String id, float[] x, int numIntervals, boolean normalize) {
-        this.id = id;
+    public DocVector(String id, float[] x, int numIntervals, boolean normalize, float minVal, float maxVal) {
+        this.docName = id;
         this.numDimensions = x.length;
         DocVector.numIntervals = numIntervals;
         
@@ -105,7 +144,9 @@ public class DocVector implements Comparable<DocVector> {
         for (int i=0; i < numDimensions; i++) {
             this.x[i] = x[i];
         }
-        normalize();
+        
+        if (normalize)
+            normalize(minVal, maxVal);
         
         StringBuffer buff = new StringBuffer();
         for (int i=0; i < numDimensions; i++) {
@@ -113,15 +154,8 @@ public class DocVector implements Comparable<DocVector> {
         }
         quantized = quantize();
     }
-    
-    final void normalize() {  // in [0, 1]
-        float max = Float.MIN_VALUE, min = Float.MAX_VALUE;
-        for (int i=0; i < x.length; i++) {
-            if (x[i] > max)
-                max = x[i];            
-            else if (x[i] < min)
-                min = x[i];
-        }
+
+    final void normalize(float min, float max) {  // in [0, 1]
         
         float z = max - min;
         for (int i=0; i < x.length; i++) {
@@ -149,7 +183,7 @@ public class DocVector implements Comparable<DocVector> {
         
         this.numDimensions = numDimensions;
         DocVector.numIntervals = numIntervals;
-        this.id = doc.get(DocVector.FIELD_ID);
+        this.docName = doc.get(DocVector.FIELD_ID);
                 
         if (splitCells == null)
             quantized = quantize();
@@ -179,7 +213,7 @@ public class DocVector implements Comparable<DocVector> {
         
         this.numDimensions = numDimensions;
         DocVector.numIntervals = numIntervals;
-        this.id = doc.get(DocVector.FIELD_ID);                
+        this.docName = doc.get(DocVector.FIELD_ID);                
         
         quantized = quantize();
     }
@@ -197,7 +231,7 @@ public class DocVector implements Comparable<DocVector> {
         
         this.numDimensions = numDimensions;
         DocVector.numIntervals = numIntervals;
-        this.id = doc.get(DocVector.FIELD_ID);                        
+        this.docName = doc.get(DocVector.FIELD_ID);                        
     }
     
     byte[] getVecBytes(float[] x) {
@@ -266,7 +300,7 @@ public class DocVector implements Comparable<DocVector> {
     public Document constructDoc() {
         Document doc = new Document();
         
-        doc.add(new Field(FIELD_ID, id==null?"":id, Field.Store.YES, Field.Index.NOT_ANALYZED));
+        doc.add(new Field(FIELD_ID, docName==null?"":docName, Field.Store.YES, Field.Index.NOT_ANALYZED));
         
         // Store the vectors as byte arrays (in binary format rather than text format
         // which takes more space...
@@ -281,8 +315,8 @@ public class DocVector implements Comparable<DocVector> {
     public Document constructDoc(DocVector wholeDocvec) {
         Document doc = new Document();
         
-        doc.add(new Field(FIELD_SUBVEC_ID, id==null?"":id, Field.Store.YES, Field.Index.NOT_ANALYZED));
-        doc.add(new Field(FIELD_ID, wholeDocvec.id==null?"":wholeDocvec.id, Field.Store.YES, Field.Index.NOT_ANALYZED));
+        doc.add(new Field(FIELD_SUBVEC_ID, docName==null?"":docName, Field.Store.YES, Field.Index.NOT_ANALYZED));
+        doc.add(new Field(FIELD_ID, wholeDocvec.docName==null?"":wholeDocvec.docName, Field.Store.YES, Field.Index.NOT_ANALYZED));
         
         // Store the vectors as byte arrays (in binary format rather than text format
         // which takes more space...
@@ -308,6 +342,7 @@ public class DocVector implements Comparable<DocVector> {
     @Override
     public String toString() {
         StringBuffer buff = new StringBuffer();
+		buff.append(getId()).append(": ");
         buff.append(getCoordinates()).append("\t").append(this.quantized);
         return buff.toString();
     }
@@ -349,17 +384,18 @@ public class DocVector implements Comparable<DocVector> {
     }
     
     public float getDist(DocVector that) {
-        /*
-        EuclideanDistance dist = new EuclideanDistance();        
-        return (float)dist.compute(toDoubleArray(x), toDoubleArray(that.x));
-        */
         
+        //EuclideanDistance dist = new EuclideanDistance();        
+        //return (float)dist.compute(toDoubleArray(x), toDoubleArray(that.x));
+        
+       	///* 
         float dist = 0, del = 0;
         for (int i=0; i < numDimensions; i++) {
             del = x[i] - that.x[i];
             dist += del*del;
-        }                
+        } 
         return dist;        
+	//*/               
     }
 
     @Override
@@ -370,7 +406,7 @@ public class DocVector implements Comparable<DocVector> {
     @Override
     public boolean equals(Object o) {
         DocVector that = (DocVector)o;
-        return this.id.equals(that.id);
+        return this.docName.equals(that.docName);
     }
 
     public DocVector getSubVector(int startDimension, int numDimensions) {

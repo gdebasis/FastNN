@@ -15,6 +15,7 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.Version;
+import rndvecgen.RandomVecGen;
 
 /**
  * Quantizes a real-valued normalized vector, where each x_i \in [0, 1].
@@ -33,27 +34,41 @@ public class RealValuedVecIndexer {
     Properties prop;
     IndexWriter writer;
     String indexPath;
+    RandomVecGen rvgen;
     
     public RealValuedVecIndexer(String propFile) throws Exception {
         prop = new Properties();
         prop.load(new FileReader(propFile));
-        indexPath = prop.getProperty("index");        
         
         numDimensions = Integer.parseInt(prop.getProperty("vec.numdimensions"));
-        
         DocVector.initVectorRange(prop);
         numIntervals = DocVector.numIntervals;
+        
+        boolean syntheticQueries = prop.getProperty("data.source").equals("synthetic");
+        if (syntheticQueries) {
+            rvgen = new RandomVecGen(prop);        
+            indexPath = rvgen.randomSamplesFileName() + ".index";
+        }
+        else
+            indexPath = prop.getProperty("index");        
+        
     }
     
     public RealValuedVecIndexer(String propFile, String indexDirName) throws Exception {
         prop = new Properties();
         prop.load(new FileReader(propFile));        
-        indexPath = prop.getProperty(indexDirName);        
         
-        numDimensions = Integer.parseInt(prop.getProperty("vec.numdimensions"));
-        
+        numDimensions = Integer.parseInt(prop.getProperty("vec.numdimensions"));        
         DocVector.initVectorRange(prop);
         numIntervals = DocVector.numIntervals;
+        
+        boolean syntheticQueries = prop.getProperty("data.source").equals("synthetic");
+        if (syntheticQueries) {
+            rvgen = new RandomVecGen(prop);        
+            indexPath = rvgen.randomSamplesFileName() + ".index";
+        }
+        else
+            indexPath = prop.getProperty(indexDirName);        
         
         IndexWriterConfig iwcfg = new IndexWriterConfig(
                 new WhitespaceAnalyzer());
@@ -75,34 +90,21 @@ public class RealValuedVecIndexer {
         String dataSource = prop.getProperty("data.source");
         if (dataSource.equals("external"))
             indexFile();       
-        else
+        else {
             indexRandom();
-    }
-    
-    void indexRandom() throws Exception {
-        
-        final int batchSize = 10000;
-        int count = 0, totalCount = 0;
-        int numRandomSamples = Integer.parseInt(prop.getProperty("syntheticdata.numsamples", "100000"));
-        
-        for (int i = 0; i < numRandomSamples; i++) {
-            DocVector dvec = new DocVector(i, numDimensions, numIntervals, null);
-            System.out.println(dvec.toString());
-            Document luceneDoc = dvec.constructDoc();
-            writer.addDocument(luceneDoc);
-            if (count == batchSize) {
-                System.out.println("Added " + totalCount + " vectors...");
-                count = 0;           
-            }
-            count++;
-            totalCount++;
+            indexFile(rvgen.randomSamplesFileName());
         }
     }
     
-    void indexFile() throws Exception {
-        File file = new File(prop.getProperty("dvec.file"));
+    void indexRandom() throws Exception {        
+        boolean generate = Boolean.parseBoolean(prop.getProperty("syntheticdata.generate", "false"));
+        if (generate)
+            rvgen.generateSamples();                        
+    }
+    
+    void indexFile(String fileName) throws Exception {
         
-        FileReader fr = new FileReader(file);
+        FileReader fr = new FileReader(fileName);
         BufferedReader br = new BufferedReader(fr);
         String line;
         
@@ -110,7 +112,7 @@ public class RealValuedVecIndexer {
         int count = 0;
         // Each line is a tweet document
         while ((line = br.readLine()) != null) {
-            DocVector dvec = new DocVector(line, numDimensions, numIntervals);
+            DocVector dvec = new DocVector(line, count, numDimensions, numIntervals);
             Document luceneDoc = dvec.constructDoc();
             
             if (count%batchSize == 0) {
@@ -124,11 +126,15 @@ public class RealValuedVecIndexer {
         fr.close();        
     }
     
+    void indexFile() throws Exception {
+        indexFile(prop.getProperty("dvec.file"));
+    }
+    
     public static void main(String[] args) {
         if (args.length == 0) {
             args = new String[1];
             System.out.println("Usage: java RealValuedVecIndexer <prop-file>");
-            args[0] = "init.properties";
+            args[0] = "init_synthetic.properties";
         }
         
         try {

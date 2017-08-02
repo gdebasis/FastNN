@@ -82,7 +82,7 @@ public class OptimizedRealValuedVecIndexer extends RealValuedVecIndexer {
         Terms terms = fields.terms(DocVector.FIELD_CELL_ID);        
         TermsEnum te = terms.iterator();
         
-        // Iterate through every term (a cell id) and requantize the
+        // Iterate through every term (a cell docName) and requantize the
         // points within the cell if required.
         while (te.next() != null) {
             String cellId = te.term().utf8ToString();
@@ -94,10 +94,10 @@ public class OptimizedRealValuedVecIndexer extends RealValuedVecIndexer {
                 
                 for (DocVector p : containedPoints) {
                     requantizedCell = cell.quantize(p);  // this function returns a new object
-                    p.quantize(requantizedCell);  // update quantization info (cell id)
+                    p.quantize(requantizedCell);  // update quantization info (cell docName)
                     Document doc = p.constructDoc();
 
-                    Term t = new Term(DocVector.FIELD_ID, p.id);
+                    Term t = new Term(DocVector.FIELD_ID, p.docName);
                     writer.deleteDocuments(t);
                     writer.addDocument(doc);
                 }
@@ -132,7 +132,7 @@ public class OptimizedRealValuedVecIndexer extends RealValuedVecIndexer {
             
             // iterate for each cell in this document
             while ((term = termsEnum.next()) != null) { // explore the terms for this field
-                String cellId = term.utf8ToString(); // one cell id
+                String cellId = term.utf8ToString(); // one cell docName
                 cell = new Cell(cellId);
                 
                 if (cell.toSplit(reader)) { // do we need to requantize?

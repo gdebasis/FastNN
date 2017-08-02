@@ -7,11 +7,9 @@ package retriever;
 
 import indexer.Cell;
 import indexer.DocVector;
-import indexer.OptimizedRealValuedVecIndexer;
 import indexer.SplitCells;
 import java.io.File;
 import java.io.FileReader;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -22,7 +20,6 @@ import java.util.Properties;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
@@ -32,10 +29,8 @@ import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopScoreDocCollector;
-import org.apache.lucene.search.similarities.BM25Similarity;
 import org.apache.lucene.search.similarities.LMJelinekMercerSimilarity;
 import org.apache.lucene.store.FSDirectory;
-import org.apache.lucene.util.Bits;
 
 /**
  *
@@ -366,8 +361,8 @@ public class QuantizedVecSearcher {
         }
         
         List<DocVector> nnList = new ArrayList<>();
-        for (int docId : aggregatedList) {
-            Document d = reader.document(docId);            
+        for (int id : aggregatedList) {
+            Document d = reader.document(id);            
             DocVector dvec = new DocVector(d, numDimensions, numIntervals);
             dvec.setDistWithQry(qvec.getDist(dvec));
             nnList.add(dvec);

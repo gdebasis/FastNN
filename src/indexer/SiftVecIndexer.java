@@ -33,13 +33,16 @@ public class SiftVecIndexer extends RealValuedVecIndexer {
         final int batchSize = 10000;
         int count = 0;
 
+        FloatByteRcd minMaxInfo = new FloatByteRcd(prop.getProperty("dvec.file"));
+        System.out.println("min=" + minMaxInfo.getMin() + ", max=" + minMaxInfo.getMax());
+        
         FloatByteRcd fbr = null;
         do {
             fbr = FloatByteRcd.readNext(reader, count);
             if (fbr == null)
                 break;
             
-            DocVector dvec = fbr.getDocVec(normalize);
+            DocVector dvec = fbr.getDocVec(normalize, minMaxInfo.getMin(), minMaxInfo.getMax());
             Document luceneDoc = dvec.constructDoc();
                 
             if (count%batchSize == 0) {

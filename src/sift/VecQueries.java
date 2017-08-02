@@ -49,7 +49,13 @@ public class VecQueries {
         load();
     }
     
+    public VecQueries() {
+        qvecs = new ArrayList<>();        
+    }
+    
     public List<DocVector> getQueries() { return qvecs; }
+    
+    public void add(QueryVector q) { qvecs.add(q); }
     
     public Qrels getQrels() { return nnData; }
     
@@ -60,13 +66,16 @@ public class VecQueries {
         RandomAccessFile reader = new RandomAccessFile(fileName, "r");
         
         int count = 0;
+        FloatByteRcd minMaxInfo = new FloatByteRcd(prop.getProperty("dvec.file"));
+        System.out.println("min=" + minMaxInfo.getMin() + ", max=" + minMaxInfo.getMax());
+        
         FloatByteRcd fbr = null;
         do {
             fbr = FloatByteRcd.readNext(reader, count);
             if (fbr == null)
                 break;
             
-            DocVector dvec = fbr.getDocVec(normalize);
+            DocVector dvec = fbr.getDocVec(normalize, minMaxInfo.getMin(), minMaxInfo.getMax());
             qvecs.add(dvec);
             count++;
         }
@@ -80,7 +89,9 @@ public class VecQueries {
     
     final void load() throws Exception {        
         loadQueries();
-        loadQrels();
+        boolean eval = Boolean.parseBoolean(prop.getProperty("eval", "false"));
+        if (eval)
+            loadQrels();
     }
     
     public String toString() {
@@ -138,7 +149,7 @@ public class VecQueries {
         DocVector qvec = this.qvecs.get(id);
         List<DocVector> relVecs = nnData.getSortedRelVecs(reader, qvec, id);
         
-        /*
+        ///*
         i = 1;
         for (DocVector relVec : relVecs) {
             System.out.println("Distance between query and " + i + "-NN (" + relVec.getId() + ") = " + relVec.getDistFromQuery());
@@ -150,7 +161,7 @@ public class VecQueries {
             System.out.println("Distance between query and doc(" + dvec.getId() + ") = " + dvec.getDistFromQuery());
             i++;
         }
-        */
+        //*/
         
         nnVecId = relVecs.get(0).getId();
         int nnRetrievedAt = -1;
@@ -166,8 +177,8 @@ public class VecQueries {
             i++;
         }
                 
-        //System.out.println("1-NN: " + nnVecId);
-        //System.out.println("Retrieved docs: " + buff.toString());
+        System.out.println("1-NN: " + nnVecId);
+        System.out.println("Retrieved docs: " + buff.toString());
         
         /*
         if (nnRetrievedAt < 100) {

@@ -43,7 +43,7 @@ public class Cell {
         }
     }
 
-    // A cell id comprises of <dimension-id>_<offset>+
+    // A cell docName comprises of <dimension-docName>_<offset>+
     public Cell(String cellId) {
         String[] tokens = cellId.split("_");
         offsets = new ArrayList<>();
@@ -81,8 +81,8 @@ public class Cell {
         
         Cell newCell = new Cell(this);
         
-        float delta = (DocVector.MAX_VAL - DocVector.MIN_VAL)/(float)DocVector.numIntervals;
-        float cellMin = DocVector.MIN_VAL;
+        float delta = (DocVector.MAXVAL - DocVector.MINVAL)/(float)DocVector.numIntervals;
+        float cellMin = DocVector.MINVAL;
         
         for (int offset : offsets) {
             cellMin += delta * offset;
@@ -98,8 +98,8 @@ public class Cell {
         
         Cell newCell = new Cell(axisId);
         
-        float delta = (DocVector.MAX_VAL - DocVector.MIN_VAL)/(float)DocVector.numIntervals;
-        float cellMin = DocVector.MIN_VAL;
+        float delta = (DocVector.MAXVAL - DocVector.MINVAL)/(float)DocVector.numIntervals;
+        float cellMin = DocVector.MINVAL;
         int offset;
         Cell splitInfo;
         

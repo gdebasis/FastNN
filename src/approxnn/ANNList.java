@@ -95,7 +95,7 @@ public class ANNList {
         return new ANNList(x);
     }
 
-    List<DocVector> selectTopK(DocVector qvec, IndexReader reader, int k) throws Exception {
+    public List<DocVector> selectTopK(DocVector qvec, IndexReader reader, int k) throws Exception {
 
         PriorityQueue<DocVector> nearest = new PriorityQueue();
         
@@ -117,7 +117,7 @@ public class ANNList {
     }
 
     // Use similarity scores
-    Set<DocIdSim> selectTopKSim(DocVector qvec, IndexReader reader, int k) throws Exception {
+    public Set<DocIdSim> selectTopKSim(DocVector qvec, IndexReader reader, int k) throws Exception {
         
         // Resort the set of doc-score similarity objects and select top k
         List<DocIdSim> sortedDocIdSims = new ArrayList<>(this.neighbors.size());
@@ -135,7 +135,7 @@ public class ANNList {
         return sortedSet;
     }
     
-    List<DocVector> selectTop(DocVector qvec, IndexReader reader) throws Exception {
+    public List<DocVector> selectTop(DocVector qvec, IndexReader reader) throws Exception {
         float minDist = Float.MAX_VALUE;
         DocVector ann = null;
         
